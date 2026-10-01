@@ -64,7 +64,7 @@ En *Herramientas → Plantilla de nombre de archivo…* puedes usar cualquier ca
 
 ### Archivos de la aplicación
 
-- Configuración: `%APPDATA%\d-zen\config.json` (Linux/macOS: directorio de configuración del usuario)
+- Configuración: `%LOCALAPPDATA%\d-zen\config.json` (Linux/macOS: directorio de configuración del usuario)
 - Logs: `%LOCALAPPDATA%\d-zen\Logs\d-zen.log` (también desde el menú *Abrir carpeta de logs*)
 
 ## Actualizar yt-dlp
