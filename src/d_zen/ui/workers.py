@@ -65,3 +65,17 @@ class DownloadWorker(QThread):
             self.failed.emit(f"Error inesperado: {exc}")
         else:
             self.finished_ok.emit()
+
+
+class UpdateWorker(QThread):
+    finished_ok = Signal(str)  # versión instalada
+    failed = Signal(str)
+
+    def run(self) -> None:
+        from d_zen.core import updater
+        try:
+            self.finished_ok.emit(updater.update_ytdlp())
+        except updater.UpdateError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:
+            self.failed.emit(f"Error inesperado: {exc}")

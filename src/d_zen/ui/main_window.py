@@ -1,19 +1,20 @@
 """Ventana principal: analizar URL, elegir video/audio y administrar la cola de descargas."""
-from pathlib import Path
-
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtGui import QAction, QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
-    QButtonGroup, QComboBox, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
+    QButtonGroup, QInputDialog, QComboBox, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
     QMainWindow, QMessageBox, QPushButton, QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
 )
 
+from d_zen import __version__
+from d_zen.core import config as cfgmod
+from d_zen.core import updater
 from d_zen.core.downloader import Progress, VideoInfo
-from d_zen.core.ffmpeg import ffmpeg_location
+from d_zen.core.ffmpeg import INSTALL_INSTRUCTIONS, ffmpeg_location, find_ffmpeg
 from d_zen.core.formats import AUDIO_BITRATES, AUDIO_FORMATS, Mode, bitrate_applies, build_options
 from d_zen.core.queue import DownloadJob, DownloadQueue, JobStatus
 from d_zen.ui.widgets.queue_item import QueueItem
-from d_zen.ui.workers import AnalyzeWorker, DownloadWorker
+from d_zen.ui.workers import AnalyzeWorker, DownloadWorker, UpdateWorker
 
 
 def _card() -> tuple[QFrame, QVBoxLayout]:
@@ -42,7 +43,9 @@ class MainWindow(QMainWindow):
         self._analyze_worker: AnalyzeWorker | None = None
         self._workers: set[DownloadWorker] = set()
         self._active_worker: DownloadWorker | None = None
-        self._dest = str(Path.home() / "Downloads")
+        self.cfg = cfgmod.load()
+        self._dest = self.cfg.dest_dir
+        self._update_worker: UpdateWorker | None = None
         self.queue = DownloadQueue()
         self._items: dict[int, QueueItem] = {}
 
@@ -52,6 +55,7 @@ class MainWindow(QMainWindow):
         outer = QVBoxLayout(root)
         outer.setContentsMargins(32, 26, 32, 28)
         outer.setSpacing(22)
+        self._build_menu()
         outer.addLayout(self._build_header())
 
         body = QHBoxLayout()
@@ -59,7 +63,92 @@ class MainWindow(QMainWindow):
         body.addWidget(self._build_left(), 11)
         body.addWidget(self._build_right(), 9)
         outer.addLayout(body, 1)
+        self._restore_preferences()
         self._refresh_empty_state()
+        QTimer.singleShot(300, self._check_ffmpeg)
+
+    # ---------- menú, configuración y herramientas ----------
+    def _build_menu(self) -> None:
+        tools = self.menuBar().addMenu("Herramientas")
+        for text, slot in [
+            ("Versión de yt-dlp…", self.show_versions),
+            ("Actualizar yt-dlp", self.update_ytdlp),
+            ("Plantilla de nombre de archivo…", self.edit_template),
+            ("Abrir carpeta de logs", lambda: QDesktopServices.openUrl(
+                QUrl.fromLocalFile(str(cfgmod.log_dir())))),
+            ("Comprobar ffmpeg", lambda: self._check_ffmpeg(notify_ok=True)),
+        ]:
+            action = QAction(text, self)
+            action.triggered.connect(slot)
+            tools.addAction(action)
+        self.update_action = tools.actions()[1]
+
+    def _restore_preferences(self) -> None:
+        i = self.audio_fmt_combo.findData(self.cfg.audio_format)
+        self.audio_fmt_combo.setCurrentIndex(max(i, 0))
+        self.bitrate_combo.setCurrentIndex(max(self.bitrate_combo.findData(self.cfg.audio_bitrate), 0))
+        self._sync_bitrate()
+        (self.audio_btn if self.cfg.audio_mode else self.video_btn).setChecked(True)
+
+    def _save_preferences(self) -> None:
+        self.cfg.dest_dir = self._dest
+        self.cfg.audio_mode = self.audio_btn.isChecked()
+        self.cfg.audio_format = self.audio_fmt_combo.currentData()
+        self.cfg.audio_bitrate = self.bitrate_combo.currentData()
+        if self.quality_combo.isEnabled():
+            self.cfg.default_height = self.quality_combo.currentData()
+        self.cfg.sanitize()
+        cfgmod.save(self.cfg)
+
+    def _check_ffmpeg(self, notify_ok: bool = False) -> None:
+        found = find_ffmpeg()
+        if found is None:
+            QMessageBox.warning(self, "D-ZEN — falta ffmpeg", INSTALL_INSTRUCTIONS)
+        elif notify_ok:
+            QMessageBox.information(self, "D-ZEN", f"ffmpeg disponible:\n{found}")
+
+    def show_versions(self) -> None:
+        QMessageBox.information(
+            self, "Versiones",
+            f"D-ZEN {__version__}\nyt-dlp {updater.installed_version()}\n\n"
+            f"Configuración: {cfgmod.config_path()}\nLogs: {cfgmod.log_dir()}")
+
+    def update_ytdlp(self) -> None:
+        if self._update_worker and self._update_worker.isRunning():
+            return
+        if not updater.can_update():
+            QMessageBox.information(
+                self, "Actualizar yt-dlp",
+                f"yt-dlp {updater.installed_version()}\n\n"
+                "Esta versión empaquetada no puede actualizarse sola. "
+                "Descarga una versión nueva de D-ZEN o ejecútalo desde el código fuente.")
+            return
+        self.update_action.setEnabled(False)
+        self._set_feedback("Actualizando yt-dlp…")
+        w = UpdateWorker()
+        w.finished_ok.connect(self._on_update_ok)
+        w.failed.connect(self._on_update_failed)
+        self._update_worker = w
+        w.start()
+
+    def _on_update_ok(self, version: str) -> None:
+        self.update_action.setEnabled(True)
+        self._set_feedback(f"yt-dlp actualizado a {version}. Reinicia D-ZEN para usarlo.", "ok")
+
+    def _on_update_failed(self, message: str) -> None:
+        self.update_action.setEnabled(True)
+        self._set_feedback(message, "error")
+
+    def edit_template(self) -> None:
+        text, ok = QInputDialog.getText(
+            self, "Plantilla de nombre",
+            "Plantilla de yt-dlp (p. ej. %(title)s.%(ext)s o %(uploader)s - %(title)s.%(ext)s):",
+            text=self.cfg.filename_template)
+        if ok:
+            self.cfg.filename_template = text
+            self.cfg.sanitize()
+            cfgmod.save(self.cfg)
+            self._set_feedback(f"Plantilla: {self.cfg.filename_template}", "ok")
 
     # ---------- construcción de UI ----------
     def _build_header(self) -> QHBoxLayout:
@@ -262,8 +351,20 @@ class MainWindow(QMainWindow):
         for q in info.qualities:
             self.quality_combo.addItem(q.display, q.height)
         self.quality_combo.setEnabled(True)
+        self._select_default_quality()
         self.add_btn.setEnabled(True)
         self._set_feedback("Listo. Elige el formato y agrégalo a la cola.", "ok")
+
+    def _select_default_quality(self) -> None:
+        """Elige la calidad por defecto guardada o, si no existe, la mayor que no la supere."""
+        want = self.cfg.default_height
+        if want is None:
+            return
+        for i in range(self.quality_combo.count()):
+            h = self.quality_combo.itemData(i)
+            if h is not None and h <= want:
+                self.quality_combo.setCurrentIndex(i)
+                return
 
     def _on_analyze_failed(self, message: str) -> None:
         self.analyze_btn.setEnabled(True)
@@ -278,11 +379,14 @@ class MainWindow(QMainWindow):
         if folder:
             self._dest = folder
             self.dest_edit.setText(folder)
+            self._save_preferences()
 
     def add_to_queue(self) -> None:
         if not self._info:
             return
-        common = {"dest_dir": self._dest, "ffmpeg_dir": ffmpeg_location()}
+        self._save_preferences()
+        common = {"dest_dir": self._dest, "ffmpeg_dir": ffmpeg_location(),
+                  "outtmpl": self.cfg.filename_template}
         if self.audio_btn.isChecked():
             fmt = self.audio_fmt_combo.currentData()
             bitrate = self.bitrate_combo.currentData() if bitrate_applies(fmt) else None
@@ -377,6 +481,7 @@ class MainWindow(QMainWindow):
         for job in self.queue.jobs:
             if job.status == JobStatus.PENDING:
                 self.queue.cancel_pending(job.id)
+        self._save_preferences()
         for w in list(self._workers):
             w.cancel()
         for w in list(self._workers) + ([self._analyze_worker] if self._analyze_worker else []):
