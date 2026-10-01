@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "d-zen"
+version = "0.1.0"
+description = "Descargador de videos de escritorio basado en yt-dlp"
+requires-python = ">=3.11"
+dependencies = ["yt-dlp", "PySide6", "platformdirs"]
+
+[project.optional-dependencies]
+dev = ["pytest", "pyinstaller"]
+
+[project.scripts]
+d-zen = "d_zen.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
