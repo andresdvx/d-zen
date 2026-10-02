@@ -39,6 +39,7 @@ QFrame#jobItem[state="running"] {{ border: 1px solid {ACCENT}; }}
 QFrame#jobItem[state="error"] {{ border: 1px solid {DANGER}; }}
 
 QLineEdit, QComboBox {{
+    min-height: 20px;
     background: {BG}; border: 1px solid {BORDER}; border-radius: 10px;
     padding: 9px 12px; selection-background-color: {ACCENT};
 }}
@@ -88,6 +89,18 @@ QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
 QScrollBar::handle:vertical {{ background: {BORDER}; border-radius: 4px; min-height: 30px; }}
 QScrollBar::handle:vertical:hover {{ background: {ACCENT}; }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+
+/* Modo compacto (pantallas bajas): se activa con la propiedad compact del root */
+QWidget#root[compact="true"] * {{ font-size: 10pt; }}
+QWidget#root[compact="true"] QLabel#brand {{ font-size: 18pt; letter-spacing: 4px; }}
+QWidget#root[compact="true"] QLabel#section {{ font-size: 8pt; }}
+QWidget#root[compact="true"] QLabel#videoTitle {{ font-size: 11pt; }}
+QWidget#root[compact="true"] QLineEdit, QWidget#root[compact="true"] QComboBox {{ padding: 6px 10px; }}
+QWidget#root[compact="true"] QPushButton {{ padding: 6px 14px; }}
+QWidget#root[compact="true"] QPushButton#primary {{ padding: 8px 18px; }}
+QWidget#root[compact="true"] QPushButton#seg {{ padding: 6px 20px; }}
+QWidget#root[compact="true"] QPushButton#icon {{ padding: 2px 8px; }}
+QWidget#root[compact="true"] QPushButton#link {{ padding: 2px 6px; }}
 
 QMenuBar {{ background: {BG}; }}
 QMenuBar::item:selected {{ background: {PANEL_ALT}; }}

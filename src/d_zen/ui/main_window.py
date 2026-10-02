@@ -38,7 +38,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("D-ZEN")
         self.resize(1180, 760)
-        self.setMinimumSize(1000, 660)
+        self.setMinimumSize(900, 540)
+        self._compact: bool | None = None
+        self._thumb_src: QPixmap | None = None
 
         self._info: VideoInfo | None = None
         self._analyze_worker: AnalyzeWorker | None = None
@@ -53,20 +55,54 @@ class MainWindow(QMainWindow):
         root = QWidget()
         root.setObjectName("root")
         self.setCentralWidget(root)
-        outer = QVBoxLayout(root)
-        outer.setContentsMargins(32, 26, 32, 28)
-        outer.setSpacing(22)
+        self._root = root
+        self.outer = outer = QVBoxLayout(root)
         self._build_menu()
         outer.addLayout(self._build_header())
 
-        body = QHBoxLayout()
-        body.setSpacing(24)
+        self.body = body = QHBoxLayout()
         body.addWidget(self._build_left(), 11)
         body.addWidget(self._build_right(), 9)
         outer.addLayout(body, 1)
         self._restore_preferences()
         self._refresh_empty_state()
+        self._apply_density(force=True)
         QTimer.singleShot(300, self._check_ffmpeg)
+
+    # ---------- densidad (pantallas pequeñas) ----------
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._apply_density()
+
+    def _apply_density(self, force: bool = False) -> None:
+        """Modo compacto en ventanas/pantallas bajas: menos márgenes, fuente y miniatura más pequeñas."""
+        compact = self.height() < 800 or self.width() < 1100
+        if compact == self._compact and not force:
+            return
+        self._compact = compact
+        if compact:
+            self.outer.setContentsMargins(20, 8, 20, 16)
+            self.outer.setSpacing(12)
+            self.body.setSpacing(16)
+            self.left_lay.setSpacing(10)
+            self.thumb.setFixedSize(192, 108)
+        else:
+            self.outer.setContentsMargins(32, 22, 32, 28)
+            self.outer.setSpacing(20)
+            self.body.setSpacing(24)
+            self.left_lay.setSpacing(14)
+            self.thumb.setFixedSize(256, 144)
+        self.tagline.setVisible(not compact)
+        self._root.setProperty("compact", compact)
+        for w in [self._root, *self._root.findChildren(QWidget)]:
+            w.style().unpolish(w)
+            w.style().polish(w)
+        self._apply_thumb()
+
+    def _apply_thumb(self) -> None:
+        if self._thumb_src and not self._thumb_src.isNull():
+            self.thumb.setPixmap(self._thumb_src.scaled(
+                self.thumb.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
     # ---------- menú, configuración y herramientas ----------
     def _build_menu(self) -> None:
@@ -159,16 +195,29 @@ class MainWindow(QMainWindow):
         col.setSpacing(0)
         brand = QLabel("D-ZEN")
         brand.setObjectName("brand")
-        tagline = QLabel("Descarga video y audio, sin ruido.")
-        tagline.setObjectName("tagline")
+        self.tagline = QLabel("Descarga video y audio, sin ruido.")
+        self.tagline.setObjectName("tagline")
         col.addWidget(brand)
-        col.addWidget(tagline)
+        col.addWidget(self.tagline)
         row.addLayout(col)
         row.addStretch(1)
         return row
 
     def _build_left(self) -> QWidget:
-        card, lay = _card()
+        card = QFrame()
+        card.setObjectName("card")
+        card_lay = QVBoxLayout(card)
+        card_lay.setContentsMargins(6, 8, 6, 16)
+        card_lay.setSpacing(10)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        content = QWidget()
+        self.left_lay = lay = QVBoxLayout(content)
+        lay.setContentsMargins(16, 10, 12, 4)
+        scroll.setWidget(content)
+        card_lay.addWidget(scroll, 1)
 
         lay.addWidget(_section("Enlace"))
         row = QHBoxLayout()
@@ -192,7 +241,6 @@ class MainWindow(QMainWindow):
         info.setSpacing(18)
         self.thumb = QLabel("Sin miniatura")
         self.thumb.setObjectName("thumb")
-        self.thumb.setFixedSize(256, 144)
         self.thumb.setAlignment(Qt.AlignCenter)
         meta = QGridLayout()
         meta.setVerticalSpacing(8)
@@ -270,7 +318,10 @@ class MainWindow(QMainWindow):
         self.add_btn.setCursor(Qt.PointingHandCursor)
         self.add_btn.setEnabled(False)
         self.add_btn.clicked.connect(self.add_to_queue)
-        lay.addWidget(self.add_btn)
+        btn_row = QHBoxLayout()
+        btn_row.setContentsMargins(16, 0, 16, 0)
+        btn_row.addWidget(self.add_btn)
+        card_lay.addLayout(btn_row)
         return card
 
     def _make_quality_combo(self) -> QComboBox:
@@ -345,8 +396,10 @@ class MainWindow(QMainWindow):
         self.duration_lbl.setText(info.duration_label)
         pix = QPixmap()
         if thumb_data and pix.loadFromData(thumb_data):
-            self.thumb.setPixmap(pix.scaled(self.thumb.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self._thumb_src = pix
+            self._apply_thumb()
         else:
+            self._thumb_src = None
             self.thumb.setPixmap(QPixmap())
             self.thumb.setText("Sin miniatura")
         self.quality_combo.clear()
