@@ -1,4 +1,5 @@
 """Ventana principal: analizar URL, elegir video/audio y administrar la cola de descargas."""
+import logging
 from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
@@ -102,6 +103,7 @@ class MainWindow(QMainWindow):
 
     def _check_ffmpeg(self, notify_ok: bool = False) -> None:
         found = find_ffmpeg()
+        logging.getLogger(__name__).info("ffmpeg: %s", found or "no encontrado")
         if found is None:
             QMessageBox.warning(self, "D-ZEN — falta ffmpeg", INSTALL_INSTRUCTIONS)
         elif notify_ok:

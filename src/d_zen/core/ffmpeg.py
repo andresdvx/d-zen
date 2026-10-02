@@ -20,10 +20,20 @@ def app_bin_dir() -> Path:
     return Path(__file__).resolve().parents[3] / "bin"
 
 
+def bundled_bin_dir() -> Path | None:
+    """Carpeta bin/ extraída dentro del ejecutable de un solo archivo (PyInstaller --onefile)."""
+    base = getattr(sys, "_MEIPASS", None)
+    return Path(base) / "bin" if base else None
+
+
 def find_ffmpeg(extra_dirs: list[Path] | None = None) -> str | None:
-    """Ruta al ejecutable de ffmpeg, o None si no está disponible."""
+    """Ruta al ejecutable de ffmpeg, o None si no está disponible.
+
+    Orden: bin/ junto al ejecutable (permite sustituirlo), ffmpeg incluido en el .exe, PATH.
+    """
     exe = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
-    for folder in [app_bin_dir(), *(extra_dirs or [])]:
+    bundled = bundled_bin_dir()
+    for folder in [app_bin_dir(), *([bundled] if bundled else []), *(extra_dirs or [])]:
         candidate = Path(folder) / exe
         if candidate.is_file():
             return str(candidate)

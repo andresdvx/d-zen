@@ -83,13 +83,25 @@ Las pruebas usan datos simulados; no hacen llamadas a internet.
 
 ## Compilar el .exe
 
+Para generar **un solo `D-ZEN.exe` con ffmpeg incluido**, coloca `ffmpeg.exe` y `ffprobe.exe` en `bin/` (raíz del
+proyecto) y ejecuta:
+
 ```bash
 pip install -e ".[dev]"
 pyinstaller build.spec --noconfirm
 ```
 
-El resultado queda en `dist/D-ZEN/` (ejecutar `D-ZEN.exe`). Para distribuirlo, copia ffmpeg a `dist/D-ZEN/bin/`
-o pide al usuario que lo instale en el PATH.
+El resultado es `dist/D-ZEN.exe` (~130 MB): no necesita Python ni ffmpeg instalados. Si hay una carpeta `bin/` junto al
+`.exe`, se usa esa en lugar de la incluida (útil para cambiar de versión de ffmpeg).
+
+Alternativa en carpeta (sin incluir ffmpeg): `D_ZEN_ONEDIR=1 pyinstaller build.spec --noconfirm` → `dist/D-ZEN/`.
+
+> ffmpeg se distribuye bajo LGPL/GPL según la build. Si compartes el `.exe`, revisa la licencia de la build que
+> incluyes (<https://ffmpeg.org/legal.html>).
+
+### Icono
+
+El icono está en `assets/` (`icon.ico` multitamaño y `icon.png`). Para regenerarlo: `python tools/make_icon.py`.
 
 ## Estructura
 
@@ -99,6 +111,7 @@ src/d_zen/
 ├── core/    # sin dependencias de PySide6: formats, downloader, queue, config, ffmpeg, updater, filenames
 └── ui/      # main_window, workers (hilos), theme, widgets/
 tests/
-assets/      # icono
+assets/      # icono (generado con tools/make_icon.py)
+tools/       # utilidades de desarrollo
 build.spec   # PyInstaller
 ```
